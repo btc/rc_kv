@@ -45,7 +45,7 @@ func (db *DB) Get(key string) (string, bool, error) {
 
 func main() {
 
-	var db DB
+	db := NewDB()
 
 	r := mux.NewRouter()
 
