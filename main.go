@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/gorilla/mux"
 )
@@ -27,6 +28,7 @@ and work on making it more efficient if you have time.
 */
 
 type DB struct {
+	m sync.Mutex
 	kv map[string]string
 }
 
@@ -37,6 +39,8 @@ func NewDB() *DB {
 }
 
 func (db *DB) Set(key, value string) error {
+	db.m.Lock()
+	defer db.m.Unlock()
 	if key == "" {
 		return errors.New("empty key not permitted")
 	}
@@ -45,6 +49,8 @@ func (db *DB) Set(key, value string) error {
 }
 
 func (db *DB) Get(key string) (string, bool, error) {
+	db.m.Lock()
+	defer db.m.Unlock()
 	val, exists := db.kv[key]
 	return val, exists, nil
 }
