@@ -1,9 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
-	"github.com/gorilla/mux"
 	"net/http"
+
+	"github.com/gorilla/mux"
 )
 
 /*
@@ -22,7 +24,7 @@ it should return the value stored at somekey.
 During your interview, you will pair on saving the data to a file.
 You can start with simply appending each write to the file,
 and work on making it more efficient if you have time.
- */
+*/
 
 type DB struct {
 	kv map[string]string
@@ -35,6 +37,9 @@ func NewDB() *DB {
 }
 
 func (db *DB) Set(key, value string) error {
+	if key == "" {
+		return errors.New("empty key not permitted")
+	}
 	db.kv[key] = value
 	return nil
 }
@@ -55,21 +60,29 @@ func main() {
 		val, exists, err := db.Get(key)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 		if !exists {
 			http.NotFound(w, r)
+			return
 		}
 		w.Write([]byte(val))
 	})
 
 	r.HandleFunc("/set", func(w http.ResponseWriter, r *http.Request) {
 
-		// write the first value of the first key, ignoring the rest
-		// NB: /set?s results in (k: s, v: "")
 
 		for key, vals := range r.URL.Query() {
 			for _, val := range vals {
-				db.Set(key, val)
+
+				// write the first value of the first key, ignoring the rest
+				// NB: /set?s results in (k: s, v: "")
+
+				if err := db.Set(key, val); err != nil {
+					// TODO(btc): distinguish between internal and request errors
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
 				w.WriteHeader(http.StatusOK)
 				return
 			}
