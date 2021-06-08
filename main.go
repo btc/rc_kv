@@ -74,9 +74,10 @@ func main() {
 				return
 			}
 		}
+
 		s := fmt.Sprintf("invalid input: %s", r.URL.RawQuery)
 		http.Error(w, s, http.StatusBadRequest)
 	})
 
-	http.ListenAndServe(":4000", r)
+	http.ListenAndServe("localhost:4000", r)
 }
