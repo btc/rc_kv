@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/gorilla/mux"
 	"net/http"
 )
@@ -62,11 +63,19 @@ func main() {
 	})
 
 	r.HandleFunc("/set", func(w http.ResponseWriter, r *http.Request) {
+
+		// write the first value of the first key, ignoring the rest
+		// NB: /set?s results in (k: s, v: "")
+
 		for key, vals := range r.URL.Query() {
 			for _, val := range vals {
 				db.Set(key, val)
+				w.WriteHeader(http.StatusOK)
+				return
 			}
 		}
+		s := fmt.Sprintf("invalid input: %s", r.URL.RawQuery)
+		http.Error(w, s, http.StatusBadRequest)
 	})
 
 	http.ListenAndServe(":4000", r)
