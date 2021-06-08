@@ -49,7 +49,7 @@ func main() {
 
 	r := mux.NewRouter()
 
-	r.HandleFunc("get", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
 		key := r.URL.Query().Get("key")
 		val, exists, err := db.Get(key)
 		if err != nil {
@@ -61,7 +61,7 @@ func main() {
 		w.Write([]byte(val))
 	})
 
-	r.HandleFunc("set", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/set", func(w http.ResponseWriter, r *http.Request) {
 		for key, vals := range r.URL.Query() {
 			for _, val := range vals {
 				db.Set(key, val)
