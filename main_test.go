@@ -7,11 +7,24 @@ import (
 )
 
 func TestDB(t *testing.T) {
-	db := NewDB()
+	// TODO: make new file
+	db, err := NewDB("test.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	assert.Equal(t,
+		[]byte("color,blue"),
+		db.makeRecord("color", "blue"),
+		)
+
 
 	if err := db.Set("", "value"); err == nil {
 		t.Fatal("setting an empty key should result in an error")
 	}
+
+	// before there is a key, there should be no value present in the index for the key/offset pair
 
 	testCases := []struct {
 		Key         string
@@ -24,8 +37,10 @@ func TestDB(t *testing.T) {
 		{"time", true, "now", "set second key"},
 		{"day", false, "wednesday", "overwrite first key after setting second"},
 	}
-	for _, testCase := range testCases {
+	for i, testCase := range testCases {
+
 		if testCase.IsNewKey {
+			db.index[testCase.Key]
 			_, exists, err := db.Get(testCase.Key)
 			if err != nil {
 				t.Fatalf("IsNewKey error: Get(%s) returned %s", testCase.Key, err.Error())
