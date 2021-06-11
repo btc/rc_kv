@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -32,25 +34,48 @@ and work on making it more efficient if you have time.
 
 type DB struct {
 	m  sync.Mutex
-	kv map[string]string
 	file *os.File
-	index map[string]int
+	index map[string]int64
 }
 
 func NewDB(filename string) (*DB, error) {
-	f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
-	return &DB{
-		kv: make(map[string]string),
+	db := &DB{
+		index: make(map[string]int64),
 		file: f,
-	}, nil
+	}
+
+	if err := db.restoreIndex(); err != nil {
+		return nil, err
+	}
+
+	return db, nil
 }
 
 func (db *DB) Close() error {
 	return db.file.Close()
+}
+
+func (db *DB) restoreIndex() error {
+	offset, err := db.file.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
+	r := bufio.NewScanner(db.file)
+	for r.Scan() {
+		if r.Err() != nil {
+			break
+		}
+		record := r.Bytes()
+		key, _ := db.readRecord(record)
+		db.index[key] = offset
+		offset += int64(len(record)) + 1
+	}
+	return r.Err()
 }
 
 func (db *DB) Set(key, value string) error {
@@ -59,27 +84,54 @@ func (db *DB) Set(key, value string) error {
 	if key == "" {
 		return errors.New("empty key not permitted")
 	}
-	db.kv[key] = value
 
 	data := db.makeRecord(key, value)
+	offset, err := db.file.Seek(0, io.SeekEnd)
+	if err != nil {
+		return err
+	}
+
 	if _, err := db.file.Write(data); err != nil {
 		return err
 	}
+	db.index[key] = offset
+
 	return nil
 }
 
 func (db *DB) makeRecord(key, value string) []byte {
 	// "color,blue"
 	// "<5><4>colorblue"
-	return []byte(strings.Join([]string{key, value}, ","))
+	return []byte(strings.Join([]string{key, value}, ",")+"\n")
+}
+
+func (db *DB) readRecord(record []byte) (string, string) {
+	pair := strings.SplitN(strings.TrimSuffix(string(record), "\n"), ",", 2)
+
+	return pair[0], pair[1]
 }
 
 func (db *DB) Get(key string) (string, bool, error) {
 	db.m.Lock()
 	defer db.m.Unlock()
-	val, exists := db.kv[key]
 
-	return val, exists, nil
+	offset, exists := db.index[key]
+	if !exists {
+		return "", false, nil
+	}
+	_, err := db.file.Seek(offset, io.SeekStart)
+	if err != nil {
+		return "", false, fmt.Errorf("seek error: %w", err)
+	}
+	r := bufio.NewScanner(db.file)
+	r.Scan()
+	if r.Err() != nil {
+		return "", false, fmt.Errorf("read error: %w", r.Err())
+	}
+	record := r.Bytes()
+	_, value := db.readRecord(record)
+
+	return value, true, nil
 }
 
 func main() {
