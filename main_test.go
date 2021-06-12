@@ -22,12 +22,6 @@ func TestDB(t *testing.T) {
 	}
 	defer db.Close()
 
-	assert.Equal(t,
-		[]byte("color,blue\n"),
-		db.makeRecord("color", "blue"),
-		)
-
-
 	if err := db.Set("", "value"); err == nil {
 		t.Fatal("setting an empty key should result in an error")
 	}
@@ -44,6 +38,7 @@ func TestDB(t *testing.T) {
 		{"day", false, "tuesday", "overwrite first key"},
 		{"time", true, "now", "set second key"},
 		{"day", false, "wednesday", "overwrite first key after setting second"},
+		{"comma,", false, "yes", "set key with a comma in it"},
 	}
 	for _, testCase := range testCases {
 
@@ -77,5 +72,5 @@ func TestDB(t *testing.T) {
 		}
 		assert.Equal(t, testCase.Expected, got, fmt.Sprintf("test case: %s", testCase.Description))
 	}
-	assert.Equal(t, 2, len(db.index))
+	assert.Equal(t, 3, len(db.index))
 }

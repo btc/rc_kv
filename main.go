@@ -2,13 +2,14 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 
 	"github.com/gorilla/mux"
@@ -71,7 +72,10 @@ func (db *DB) restoreIndex() error {
 			break
 		}
 		record := r.Bytes()
-		key, _ := db.readRecord(record)
+		key, _, err := db.decodeRecord(record)
+		if err != nil {
+			return err
+		}
 		db.index[key] = offset
 		offset += int64(len(record)) + 1
 	}
@@ -85,7 +89,7 @@ func (db *DB) Set(key, value string) error {
 		return errors.New("empty key not permitted")
 	}
 
-	data := db.makeRecord(key, value)
+	data := db.encodeRecord(key, value)
 	offset, err := db.file.Seek(0, io.SeekEnd)
 	if err != nil {
 		return err
@@ -99,16 +103,32 @@ func (db *DB) Set(key, value string) error {
 	return nil
 }
 
-func (db *DB) makeRecord(key, value string) []byte {
-	// "color,blue"
-	// "<5><4>colorblue"
-	return []byte(strings.Join([]string{key, value}, ",")+"\n")
+func (db *DB) encodeRecord(key, value string) []byte {
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.LittleEndian, int64(len(key)))
+	binary.Write(&buf, binary.LittleEndian, int64(len(value)))
+	buf.WriteString(key)
+	buf.WriteString(value)
+	return buf.Bytes()
 }
 
-func (db *DB) readRecord(record []byte) (string, string) {
-	pair := strings.SplitN(strings.TrimSuffix(string(record), "\n"), ",", 2)
-
-	return pair[0], pair[1]
+func (db *DB) decodeRecord(record []byte) (string, string, error) {
+	r := bytes.NewReader(record)
+	var len_k, len_v int64
+	if err := binary.Read(r, binary.LittleEndian, &len_k); err != nil {
+		return "", "", err
+	}
+	if err := binary.Read(r, binary.LittleEndian, &len_v); err != nil {
+		return "", "", err
+	}
+	var k, v bytes.Buffer
+	if _, err := io.CopyN(&k, r, len_k); err != nil {
+		return "", "", err
+	}
+	if _, err := io.CopyN(&v, r, len_v); err != nil {
+		return "", "", err
+	}
+	return k.String(), v.String(), nil
 }
 
 func (db *DB) Get(key string) (string, bool, error) {
@@ -129,7 +149,10 @@ func (db *DB) Get(key string) (string, bool, error) {
 		return "", false, fmt.Errorf("read error: %w", r.Err())
 	}
 	record := r.Bytes()
-	_, value := db.readRecord(record)
+	_, value, err := db.decodeRecord(record)
+	if err != nil {
+		return "", false, fmt.Errorf("decode error: %w", r.Err())
+	}
 
 	return value, true, nil
 }
