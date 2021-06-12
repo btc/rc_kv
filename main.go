@@ -61,27 +61,6 @@ func (db *DB) Close() error {
 	return db.file.Close()
 }
 
-func (db *DB) restoreIndex() error {
-	offset, err := db.file.Seek(0, io.SeekStart)
-	if err != nil {
-		return err
-	}
-	r := bufio.NewScanner(db.file)
-	for r.Scan() {
-		if r.Err() != nil {
-			break
-		}
-		record := r.Bytes()
-		key, _, err := db.decodeRecord(record)
-		if err != nil {
-			return err
-		}
-		db.index[key] = offset
-		offset += int64(len(record)) + 1
-	}
-	return r.Err()
-}
-
 func (db *DB) Set(key, value string) error {
 	db.m.Lock()
 	defer db.m.Unlock()
@@ -101,6 +80,53 @@ func (db *DB) Set(key, value string) error {
 	db.index[key] = offset
 
 	return nil
+}
+
+func (db *DB) Get(key string) (string, bool, error) {
+	db.m.Lock()
+	defer db.m.Unlock()
+
+	offset, exists := db.index[key]
+	if !exists {
+		return "", false, nil
+	}
+	_, err := db.file.Seek(offset, io.SeekStart)
+	if err != nil {
+		return "", false, fmt.Errorf("seek error: %w", err)
+	}
+	r := bufio.NewScanner(db.file)
+	r.Scan()
+	if r.Err() != nil {
+		return "", false, fmt.Errorf("read error: %w", r.Err())
+	}
+	record := r.Bytes()
+	_, value, err := db.decodeRecord(record)
+	if err != nil {
+		return "", false, fmt.Errorf("decode error: %w", r.Err())
+	}
+
+	return value, true, nil
+}
+
+func (db *DB) restoreIndex() error {
+	offset, err := db.file.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
+	r := bufio.NewScanner(db.file)
+	for r.Scan() {
+		if r.Err() != nil {
+			break
+		}
+		record := r.Bytes()
+		key, _, err := db.decodeRecord(record)
+		if err != nil {
+			return err
+		}
+		db.index[key] = offset
+		offset += int64(len(record)) + 1
+	}
+	return r.Err()
 }
 
 func (db *DB) encodeRecord(key, value string) []byte {
@@ -129,32 +155,6 @@ func (db *DB) decodeRecord(record []byte) (string, string, error) {
 		return "", "", err
 	}
 	return k.String(), v.String(), nil
-}
-
-func (db *DB) Get(key string) (string, bool, error) {
-	db.m.Lock()
-	defer db.m.Unlock()
-
-	offset, exists := db.index[key]
-	if !exists {
-		return "", false, nil
-	}
-	_, err := db.file.Seek(offset, io.SeekStart)
-	if err != nil {
-		return "", false, fmt.Errorf("seek error: %w", err)
-	}
-	r := bufio.NewScanner(db.file)
-	r.Scan()
-	if r.Err() != nil {
-		return "", false, fmt.Errorf("read error: %w", r.Err())
-	}
-	record := r.Bytes()
-	_, value, err := db.decodeRecord(record)
-	if err != nil {
-		return "", false, fmt.Errorf("decode error: %w", r.Err())
-	}
-
-	return value, true, nil
 }
 
 func main() {
